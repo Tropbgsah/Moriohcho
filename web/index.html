@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Morioh-cho Radio</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1033">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
 <style>
@@ -133,6 +135,13 @@ fetch('episode.json', {cache:'no-store'}).then(r => r.json()).then(ep => {
     (ep.date !== today ? ' <span class="warn">— pas encore celle d\'aujourd\'hui</span>' : '');
   $('eps').textContent = ep.script;
 }).catch(() => { state.textContent = state.textContent || 'Aucune émission publiée pour le moment.' });
+
+// Appli installée : le service worker la rend installable, ?go=1 lance l'émission dès l'ouverture
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (new URLSearchParams(location.search).has('go')) {
+  audio.src = 'latest.mp3?t=' + Date.now();
+  audio.play().catch(() => { state.textContent = 'Touche « Écouter l\'émission maintenant » pour lancer.' });
+}
 </script>
 </body>
 </html>
