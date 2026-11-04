@@ -1,25 +1,36 @@
 name: Morioh-cho Radio
 on:
-  schedule: [{cron: "0 4 * * *"}]
+  schedule:
+    - cron: 0 4 * * *
   workflow_dispatch:
-permissions: {contents: read, pages: write, id-token: write, actions: write}
-concurrency: {group: pages, cancel-in-progress: true}
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: {name: github-pages, url: "${{ steps.deploy.outputs.page_url }}"}
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
+        with:
+          python-version: 3.12
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r requirements.txt
       - run: python generate.py
-        env: {GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - run: cp web/* site/
       - uses: actions/upload-pages-artifact@v3
-        with: {path: site}
+        with:
+          path: site
       - id: deploy
         uses: actions/deploy-pages@v4
       - run: gh workflow enable daily.yml
-        env: {GH_TOKEN: "${{ github.token }}", GH_REPO: "${{ github.repository }}"}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
