@@ -1,7 +1,8 @@
 """Morioh-cho Radio : actu -> script (Gemini gratuit) -> voix (edge-tts) -> mix ffmpeg."""
-import os, json, subprocess, datetime, asyncio, pathlib, requests, feedparser
+import os, json, subprocess, datetime, asyncio, pathlib, time, requests, feedparser
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+MODELS = [MODEL, "gemini-3.6-flash", "gemini-3.5-flash-lite"] * 4
 VOICE = os.getenv("TTS_VOICE", "fr-FR-HenriNeural")
 DUCK_AT, VOICE_AT, MUSIC_LOW = 8.0, 8.6, 0.14   # le son baisse à 8 s
 OUT = pathlib.Path("site"); OUT.mkdir(exist_ok=True)
@@ -31,13 +32,17 @@ Règles : uniquement du texte parlé, sans markdown, sans didascalies, n'invente
 LISTE une : {json.dumps(headlines(FEEDS['une']), ensure_ascii=False)}
 LISTE insolite : {json.dumps(headlines(FEEDS['insolite']), ensure_ascii=False)}
 Réponds en JSON : {{"titre": "le gros titre en une phrase", "script": "le texte complet"}}"""
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
-        headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
-        json={"contents": [{"parts": [{"text": prompt}]}],
-              "generationConfig": {"responseMimeType": "application/json"}}, timeout=120)
+    for model in MODELS:
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
+            json={"contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {"responseMimeType": "application/json"}}, timeout=120)
+        if r.ok:
+            return json.loads(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+        print("échec", model, r.status_code, r.text[:200])
+        time.sleep(20)
     r.raise_for_status()
-    return json.loads(r.json()["candidates"][0]["content"]["parts"][0]["text"])
 
 def tts(text, path):
     try:
