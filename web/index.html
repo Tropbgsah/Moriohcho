@@ -36,7 +36,6 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--sun);outline-of
 details{color:var(--mute)} summary{cursor:pointer;color:var(--ink)}
 details p{white-space:pre-wrap;max-width:62ch}
 .warn{color:var(--sun)}
-@media (prefers-reduced-motion:no-preference){.time{transition:color .2s}}
 </style>
 </head>
 <body>
@@ -49,7 +48,7 @@ details p{white-space:pre-wrap;max-width:62ch}
  <div class="scale" aria-hidden="true"></div>
  <input id="range" type="range" min="240" max="720" step="5" value="420" aria-label="Heure du réveil">
  <div class="ends"><span>04:00</span><span>08:00</span><span>12:00</span></div>
- <button id="arm" aria-pressed="false">Armer le réveil</button>
+ <button id="arm" aria-pressed="false">Armer le réveil tous les jours</button>
  <button id="now">Écouter l'émission maintenant</button>
  <p id="state"></p>
 </section>
@@ -65,7 +64,7 @@ details p{white-space:pre-wrap;max-width:62ch}
 <script>
 const $ = id => document.getElementById(id);
 const audio = $('audio'), range = $('range'), arm = $('arm'), state = $('state');
-let timer = null, lock = null;
+let timer = null, lock = null, silent = null;
 const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 const store = {
   get(k, d){ try { return localStorage.getItem(k) ?? d } catch { return d } },
@@ -73,33 +72,58 @@ const store = {
 };
 range.value = store.get('wake', '420');
 const draw = () => { $('time').textContent = fmt(+range.value) };
-range.addEventListener('input', () => { draw(); store.set('wake', range.value); if (timer) disarm() });
 draw();
 
-async function prime(){            // le clic débloque la lecture auto plus tard
+async function prime(){            // un geste de ta part débloque la lecture auto du matin
   try { audio.muted = true; await audio.play(); audio.pause(); audio.currentTime = 0; audio.muted = false } catch {}
 }
 async function keepAwake(){ try { lock = await navigator.wakeLock?.request('screen') } catch {} }
+function keepAlive(){              // son inaudible en continu : empêche le navigateur d'endormir l'onglet
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    g.gain.value = 0.0001; osc.connect(g); g.connect(ctx.destination); osc.start(); silent = ctx;
+  } catch {}
+}
 document.addEventListener('visibilitychange', () => { if (timer && document.visibilityState === 'visible') keepAwake() });
 
 async function armIt(){
-  await prime(); await keepAwake();
-  arm.setAttribute('aria-pressed', 'true'); arm.textContent = 'Réveil armé — toucher pour annuler';
+  if (timer) return;
+  await prime(); await keepAwake(); if (!silent) keepAlive();
+  store.set('armed', '1');
+  arm.setAttribute('aria-pressed', 'true'); arm.textContent = 'Réveil actif chaque jour — toucher pour annuler';
   const target = +range.value;
-  state.textContent = `Réveil prévu à ${fmt(target)}. Laisse cet onglet ouvert, écran allumé, téléphone branché.`;
+  state.textContent = `Réveil tous les jours à ${fmt(target)}. Laisse cette page ouverte, téléphone branché.`;
   let fired = false;
   timer = setInterval(() => {
     const d = new Date(), m = d.getHours()*60 + d.getMinutes();
     if (m !== target) { fired = false; return }
-    if (!fired){ fired = true; audio.currentTime = 0; audio.play().catch(() => { state.textContent = 'Lecture bloquée : touche « Écouter » pour lancer.' }) }
+    if (fired) return;
+    fired = true;
+    audio.src = 'latest.mp3?t=' + Date.now();   // toujours l'émission du jour, jamais celle d'hier
+    audio.play().catch(() => { state.textContent = 'Lecture bloquée : touche « Écouter » pour lancer.' });
   }, 1000);
 }
-function disarm(){
+function disarm(forget = true){
   clearInterval(timer); timer = null; lock?.release?.().catch(()=>{}); lock = null;
-  arm.setAttribute('aria-pressed', 'false'); arm.textContent = 'Armer le réveil'; state.textContent = '';
+  if (forget) store.set('armed', '0');
+  arm.setAttribute('aria-pressed', 'false'); arm.textContent = 'Armer le réveil tous les jours'; state.textContent = '';
 }
+range.addEventListener('input', () => {
+  draw(); store.set('wake', range.value);
+  if (timer) { disarm(false); armIt() }
+});
 arm.addEventListener('click', () => timer ? disarm() : armIt());
-$('now').addEventListener('click', () => { audio.currentTime = 0; audio.play().catch(e => state.textContent = 'Impossible de lire l\'émission : ' + e.message) });
+$('now').addEventListener('click', () => {
+  audio.src = 'latest.mp3?t=' + Date.now();
+  audio.play().catch(e => state.textContent = 'Impossible de lire l\'émission : ' + e.message);
+});
+
+// Réveil déjà réglé : une seule touche n'importe où après l'ouverture de la page le réactive
+if (store.get('armed', '0') === '1') {
+  state.textContent = `Réveil réglé sur ${fmt(+range.value)}. Touche l'écran une fois pour le réactiver.`;
+  document.addEventListener('click', e => { if (!timer && !e.target.closest('button,input')) armIt() });
+}
 
 fetch('episode.json', {cache:'no-store'}).then(r => r.json()).then(ep => {
   $('ep').hidden = false;
@@ -108,7 +132,7 @@ fetch('episode.json', {cache:'no-store'}).then(r => r.json()).then(ep => {
   $('epd').innerHTML = `Émission du ${ep.date} · ${Math.round(ep.duree/60)} min` +
     (ep.date !== today ? ' <span class="warn">— pas encore celle d\'aujourd\'hui</span>' : '');
   $('eps').textContent = ep.script;
-}).catch(() => { state.textContent = 'Aucune émission publiée pour le moment.' });
+}).catch(() => { state.textContent = state.textContent || 'Aucune émission publiée pour le moment.' });
 </script>
 </body>
 </html>
