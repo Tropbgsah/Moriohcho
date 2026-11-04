@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Morioh-cho Radio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<style>
+:root{--bg:#1a1033;--panel:#261847;--ink:#f1eaff;--mute:#a999d1;--pink:#ff5fa2;--mint:#6ff2c5;--sun:#ffe14d;
+ box-sizing:border-box;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);color-scheme:dark}
+*{box-sizing:inherit}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,sans-serif}
+main{max-width:34rem;margin:0 auto;padding:1.5rem 1.25rem 3rem}
+h1{font:2.1rem/1.1 'DotGothic16',monospace;margin:0 0 .25rem;color:var(--pink);text-shadow:3px 3px 0 #0e0820}
+.sub{color:var(--mute);margin:0 0 1.75rem}
+.dial{background:var(--panel);border:2px solid #3b2a6b;border-radius:14px;padding:1.25rem 1rem 1.5rem}
+.time{font:4.2rem/1 'DotGothic16',monospace;text-align:center;color:var(--sun);margin:.2rem 0 1rem;letter-spacing:.04em}
+.scale{height:26px;margin:0 6px;background:repeating-linear-gradient(90deg,var(--mute) 0 1px,transparent 1px 12.5%) bottom/100% 14px no-repeat,
+ repeating-linear-gradient(90deg,var(--mute) 0 1px,transparent 1px 1.5625%) bottom/100% 7px no-repeat}
+input[type=range]{width:100%;margin:0;-webkit-appearance:none;appearance:none;background:transparent;height:44px}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--mute)}
+input[type=range]::-moz-range-track{height:2px;background:var(--mute)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:6px;height:44px;background:var(--pink);border-radius:2px;margin-top:-21px;box-shadow:0 0 14px var(--pink)}
+input[type=range]::-moz-range-thumb{width:6px;height:44px;background:var(--pink);border:0;border-radius:2px;box-shadow:0 0 14px var(--pink)}
+.ends{display:flex;justify-content:space-between;color:var(--mute);font-size:.85rem;margin:0 6px}
+button{font:1.15rem 'DotGothic16',monospace;border:0;border-radius:10px;padding:.85rem 1rem;cursor:pointer;width:100%;margin-top:1rem}
+#arm{background:var(--pink);color:#1a1033}
+#arm[aria-pressed=true]{background:var(--mint)}
+#now{background:transparent;color:var(--ink);border:2px solid #3b2a6b}
+button:focus-visible,input:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+#state{min-height:3em;color:var(--mute);margin:.9rem 0 0;font-size:.95rem}
+.ep{margin-top:2rem}
+.ep h2{font:1.3rem 'DotGothic16',monospace;margin:0 0 .3rem;color:var(--mint)}
+.ep .t{margin:0 0 .6rem}
+details{color:var(--mute)} summary{cursor:pointer;color:var(--ink)}
+details p{white-space:pre-wrap;max-width:62ch}
+.warn{color:var(--sun)}
+@media (prefers-reduced-motion:no-preference){.time{transition:color .2s}}
+</style>
+</head>
+<body>
+<main>
+<h1>Morioh-cho Radio</h1>
+<p class="sub">Ton réveil avec l'actu du jour, mixée chaque matin.</p>
+
+<section class="dial" aria-label="Heure du réveil">
+ <div class="time" id="time" aria-live="polite">07:00</div>
+ <div class="scale" aria-hidden="true"></div>
+ <input id="range" type="range" min="240" max="720" step="5" value="420" aria-label="Heure du réveil">
+ <div class="ends"><span>04:00</span><span>08:00</span><span>12:00</span></div>
+ <button id="arm" aria-pressed="false">Armer le réveil</button>
+ <button id="now">Écouter l'émission maintenant</button>
+ <p id="state"></p>
+</section>
+
+<section class="ep" id="ep" hidden>
+ <h2 id="ept"></h2>
+ <p class="t" id="epd"></p>
+ <details><summary>Lire le texte de l'émission</summary><p id="eps"></p></details>
+</section>
+</main>
+<audio id="audio" src="latest.mp3" preload="auto"></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const audio = $('audio'), range = $('range'), arm = $('arm'), state = $('state');
+let timer = null, lock = null;
+const fmt = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+const store = {
+  get(k, d){ try { return localStorage.getItem(k) ?? d } catch { return d } },
+  set(k, v){ try { localStorage.setItem(k, v) } catch {} }
+};
+range.value = store.get('wake', '420');
+const draw = () => { $('time').textContent = fmt(+range.value) };
+range.addEventListener('input', () => { draw(); store.set('wake', range.value); if (timer) disarm() });
+draw();
+
+async function prime(){            // le clic débloque la lecture auto plus tard
+  try { audio.muted = true; await audio.play(); audio.pause(); audio.currentTime = 0; audio.muted = false } catch {}
+}
+async function keepAwake(){ try { lock = await navigator.wakeLock?.request('screen') } catch {} }
+document.addEventListener('visibilitychange', () => { if (timer && document.visibilityState === 'visible') keepAwake() });
+
+async function armIt(){
+  await prime(); await keepAwake();
+  arm.setAttribute('aria-pressed', 'true'); arm.textContent = 'Réveil armé — toucher pour annuler';
+  const target = +range.value;
+  state.textContent = `Réveil prévu à ${fmt(target)}. Laisse cet onglet ouvert, écran allumé, téléphone branché.`;
+  let fired = false;
+  timer = setInterval(() => {
+    const d = new Date(), m = d.getHours()*60 + d.getMinutes();
+    if (m !== target) { fired = false; return }
+    if (!fired){ fired = true; audio.currentTime = 0; audio.play().catch(() => { state.textContent = 'Lecture bloquée : touche « Écouter » pour lancer.' }) }
+  }, 1000);
+}
+function disarm(){
+  clearInterval(timer); timer = null; lock?.release?.().catch(()=>{}); lock = null;
+  arm.setAttribute('aria-pressed', 'false'); arm.textContent = 'Armer le réveil'; state.textContent = '';
+}
+arm.addEventListener('click', () => timer ? disarm() : armIt());
+$('now').addEventListener('click', () => { audio.currentTime = 0; audio.play().catch(e => state.textContent = 'Impossible de lire l\'émission : ' + e.message) });
+
+fetch('episode.json', {cache:'no-store'}).then(r => r.json()).then(ep => {
+  $('ep').hidden = false;
+  $('ept').textContent = ep.titre;
+  const today = new Date().toISOString().slice(0,10);
+  $('epd').innerHTML = `Émission du ${ep.date} · ${Math.round(ep.duree/60)} min` +
+    (ep.date !== today ? ' <span class="warn">— pas encore celle d\'aujourd\'hui</span>' : '');
+  $('eps').textContent = ep.script;
+}).catch(() => { state.textContent = 'Aucune émission publiée pour le moment.' });
+</script>
+</body>
+</html>
