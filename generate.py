@@ -1,7 +1,7 @@
 """Morioh-cho Radio : actu -> script (Gemini gratuit) -> voix (edge-tts) -> mix ffmpeg."""
 import os, json, subprocess, datetime, asyncio, pathlib, requests, feedparser
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 VOICE = os.getenv("TTS_VOICE", "fr-FR-HenriNeural")
 DUCK_AT, VOICE_AT, MUSIC_LOW = 8.0, 8.6, 0.14   # le son baisse à 8 s
 OUT = pathlib.Path("site"); OUT.mkdir(exist_ok=True)
