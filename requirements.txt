@@ -1,0 +1,4 @@
+requests
+feedparser
+edge-tts
+gTTS
